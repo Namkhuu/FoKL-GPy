@@ -8,12 +8,12 @@ perform some very basic post-processing with a 'coverage3' plot and included RMS
 from FoKL import FoKLRoutines
 import os
 dir = os.path.abspath(os.path.dirname(__file__))  # directory of script
-# # -----------------------------------------------------------------------
-# # UNCOMMENT IF USING LOCAL FOKL PACKAGE:
-# import sys
-# sys.path.append(os.path.join(dir, '..', '..'))  # package directory
-# from src.FoKL import FoKLRoutines
-# # -----------------------------------------------------------------------
+# -----------------------------------------------------------------------
+# UNCOMMENT IF USING LOCAL FOKL PACKAGE:
+import sys
+sys.path.append(os.path.join(dir, '..', '..'))  # package directory
+from src.FoKL import FoKLRoutines
+# -----------------------------------------------------------------------
 import numpy as np
 
 
