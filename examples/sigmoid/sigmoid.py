@@ -15,6 +15,7 @@ sys.path.append(os.path.join(dir, '..', '..'))  # package directory
 from src.FoKL import FoKLRoutines
 # -----------------------------------------------------------------------
 import numpy as np
+import time
 
 
 def main():
@@ -46,6 +47,8 @@ def main():
 
 
 if __name__ == '__main__':
+    t0 = time.time()
     main()
+    tf = time.time()
+    print(f"Run Time = {tf - t0}")
     print("\nEnd of Sigmoid example.")
-

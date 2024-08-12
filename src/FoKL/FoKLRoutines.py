@@ -22,6 +22,7 @@ import pickle
 import copy
 import jax
 import jax.numpy as jnp 
+import jax.lax as lax
 from jax import grad, jit
 
 
@@ -1348,7 +1349,7 @@ class FoKL:
                           "Inf. This will likely cause values in 'betas' to be Nan.", category=UserWarning)
 
         # [END] initialization of constants
-
+        @jit
         def gibbs(inputs, data, phis, Xin, discmtx, a, b, atau, btau, draws, phind, xsm, sigsqd, tausqd, dtd):
             """
             'inputs' is the set of normalized inputs -- both parameters and model
@@ -1383,21 +1384,62 @@ class FoKL:
             # building the matrix by calculating the corresponding basis function outputs for each set of inputs
             minp, ninp = jnp.shape(inputs)
             phi_vec = []
-            if jnp.shape(discmtx) == ():  # part of fix for single input model
-                mmtx = 1
-            else:
-                mmtx, null = jnp.shape(discmtx)
+            # if jnp.shape(discmtx) == ():  # part of fix for single input model
+            #     mmtx = 1
+            # else:
+            #     mmtx, null = jnp.shape(discmtx)
 
-            if np.size(Xin) == 0:
+            def handle_discmtx_empty(_):
+                return 1, 0
+            
+            def handle_discmtx_non_empty(discmtx):
+                return jnp.shape(discmtx)
+            
+            mmtx, _ = lax.cond(jnp.shape(discmtx) == (), handle_discmtx_empty, handle_discmtx_non_empty, discmtx)
+
+            # if jnp.size(Xin) == 0:
+            #     Xin = jnp.ones((minp, 1))
+            #     mxin, nxin = jnp.shape(Xin)
+            # else:
+            #     # X = Xin
+            #     mxin, nxin = jnp.shape(Xin)
+
+
+
+            # def handle_Xin_empty(_): 
+            #     Xin = jnp.ones((minp,1))
+            #     return jnp.shape(Xin)
+            
+            # def handle_Xin_non_empty(Xin):
+            #     # Xin = Xin[:, jnp.newaxis]   # Meant to handle JAX automatically removal of the second dimension
+            #     return jnp.shape(Xin)
+            
+            # mxin, nxin = lax.cond(jnp.size(Xin) == 0, handle_Xin_empty, handle_Xin_non_empty, Xin)
+
+
+
+            if Xin == []:  #jnp.size(Xin) == 0:
                 Xin = jnp.ones((minp, 1))
-                mxin, nxin = jnp.shape(Xin)
-            else:
-                # X = Xin
-                mxin, nxin = jnp.shape(Xin)
-            if mmtx - nxin < 0:
-                X = Xin
-            else:
-                X = jnp.append(Xin, jnp.zeros((minp, mmtx - nxin)), axis=1)
+            
+            _, nxin = jnp.shape(Xin) #mxin, nxin 
+            
+            # if mmtx - nxin < 0:
+            #     X = Xin
+            # else:
+            #     X = jnp.append(Xin, jnp.zeros((minp, mmtx - nxin)), axis=1)
+
+            def handle_mmtx_nxin_condition(Xin):
+                return Xin
+    
+            def handle_mmtx_nxin_else(Xin):
+                mmtx_minus_nxin = mmtx - nxin
+                zeros_shape = (minp, mmtx_minus_nxin)
+                zeros_array = jnp.zeros(zeros_shape, dtype=Xin.dtype)
+                return jnp.append(Xin, zeros_array)
+            
+            # mmtx_minus_nxin = mmtx - nxin
+
+            X = lax.cond(mmtx - nxin < 0, handle_mmtx_nxin_condition,  handle_mmtx_nxin_else, Xin)
 
             for i in range(minp):  # for datapoint in training datapoints
 
@@ -1427,19 +1469,19 @@ class FoKL:
                             num = discmtx
                         else:
                             num = discmtx[j - 1][k]
-
+                            
                         if num != 0:  # enter if loop if num is nonzero
                             nid = int(num - 1)
 
                             # Evaluate basis function:
                             if self.kernel == self.kernels[0]:  # == 'Cubic Splines':
                                 coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]  # coefficients for cubic
-                                coeffs_jit = jit(coeffs)
                             elif self.kernel == self.kernels[1]:  # == 'Bernoulli Polynomials':
                                 coeffs = phis[nid]  # coefficients for bernoulli
                             phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
 
-                    X[i][j] = phi
+                    # X[i][j] = phi
+                    X = X.at[i,j].set(phi)
 
             # # initialize tausqd at the mode of its prior: the inverse of the mode of sigma squared, such that the
             # # initial variance for the betas is 1
@@ -1482,12 +1524,16 @@ class FoKL:
                 S = Q.dot(jnp.diag(jnp.diag(Lamb_tausqd_inv) ** (1 / 2)))
 
                 vec = np.random.normal(loc=0, scale=1, size=(mmtx + 1, 1))  # drawing from normal distribution
-                betas[k][:] = jnp.transpose(mun + sigsqd ** (1 / 2) * (S).dot(vec))
+                
+                # betas[k][:] = jnp.transpose(mun + sigsqd ** (1 / 2) * (S).dot(vec))
+                betas_k = jnp.transpose(mun + sigsqd ** (1 / 2) * (S).dot(vec))
+                betas_k = jnp.squeeze(betas_k)
+                betas = betas.at[k].set(betas_k)
 
                 vecc = mun - jnp.reshape(betas[k][:], (len(betas[k][:]), 1))
 
-                bstar = b + 0.5 * (betas[k][:].dot(XtX.dot(jnp.transpose([betas[k][:]]))) - 2 * betas[k][:].dot(Xty) +
-                                   dtd + betas[k][:].dot(jnp.transpose([betas[k][:]])) / tausqd)
+                bstar = b + 0.5 * (betas[k][:].dot(XtX.dot(jnp.transpose(betas[k][:]))) - 2 * betas[k][:].dot(Xty) +
+                                   dtd + betas[k][:].dot(jnp.transpose(betas[k][:])) / tausqd) # Bracket deleted for JAX in tranpose
                 # bstar = b + comp1.dot(comp2) + 0.5 * dtd - comp3;
 
                 # Returning a 'not a number' constant if bstar is negative, which would
@@ -1497,12 +1543,17 @@ class FoKL:
                 else:
                     sigsqd = 1 / np.random.gamma(astar, 1 / bstar)
 
-                sigs[k] = sigsqd
+                # sigs[k] = sigsqd
+                sigsqd = jnp.squeeze(sigsqd)
+                sigs.at[k].set(sigsqd)
 
                 btau_star = (1/(2*sigsqd)) * (betas[k][:].dot(jnp.reshape(betas[k][:], (len(betas[k][:]), 1)))) + btau
 
                 tausqd = 1 / np.random.gamma(atau_star, 1 / btau_star)
-                taus[k] = tausqd
+                # taus[k] = tausqd
+                tausqd = jnp.squeeze(tausqd)
+                taus.at[k].set(tausqd)
+
 
             # Calculate the evidence
             siglik = jnp.var(data - jnp.matmul(X, betahat))
@@ -1513,8 +1564,6 @@ class FoKL:
             X = X[:, 0:mmtx + 1]
 
             return betas, sigs, taus, betahat, X, ev
-
-        gibbs = jit(gibbs)
 
         # 'n' is the number of datapoints whereas 'm' is the number of inputs
         n, m = np.shape(inputs)
