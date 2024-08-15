@@ -20,6 +20,11 @@ import matplotlib.pyplot as plt
 import time
 import pickle
 import copy
+import jax 
+import jax.numpy as jnp 
+import jax.lax as lax 
+from jax import grad, jit, random
+from functools import partial
 
 
 def load(filename, directory=None):
@@ -835,7 +840,7 @@ class FoKL:
                 basis = sum((k - 1) * k * c[k] * (x ** (k - 2)) for k in range(2, len(c)))
 
         return basis
-
+    
     def evaluate(self, inputs=None, betas=None, mtx=None, **kwargs):
         """
         Evaluate the FoKL model for provided inputs and (optionally) calculate bounds. Note 'evaluate_fokl' may be a
@@ -1441,9 +1446,9 @@ class FoKL:
             # sigsqd = b / (1 + a)
             # tausqd = btau / (1 + atau)
 
-            XtX = np.transpose(X).dot(X)
+            XtX = jnp.transpose(X).dot(X)
 
-            Xty = np.transpose(X).dot(data)
+            Xty = jnp.transpose(X).dot(data)
 
             # See the link:
             #     - "https://stackoverflow.com/questions/8765310/scipy-linalg-eig-return-complex-eigenvalues-for-
@@ -1451,59 +1456,83 @@ class FoKL:
             Lamb, Q = eigh(XtX)  # using scipy eigh function to avoid imaginary values due to numerical errors
             # Lamb, Q = LA.eig(XtX)
 
-            Lamb_inv = np.diag(1 / Lamb)
+            Lamb_inv = jnp.diag(1 / Lamb)
 
-            betahat = Q.dot(Lamb_inv).dot(np.transpose(Q)).dot(Xty)
+            betahat = Q.dot(Lamb_inv).dot(jnp.transpose(Q)).dot(Xty)
             squerr = LA.norm(data - X.dot(betahat)) ** 2
 
             n = len(data)
             astar = a + 1 + n / 2 + (mmtx + 1) / 2
 
             atau_star = atau + mmtx / 2
-
             # Gibbs iterations
 
-            betas = np.zeros((draws, mmtx + 1))
-            sigs = np.zeros((draws, 1))
-            taus = np.zeros((draws, 1))
-            lik = np.zeros((draws, 1))
+            betas = jnp.zeros((draws, mmtx + 1))
+            sigs = jnp.zeros((draws, 1))
+            taus = jnp.zeros((draws, 1))
+            lik = jnp.zeros((draws, 1))
+            bstar_vector = jnp.zeros((draws,1))
 
-            for k in range(draws):
+            @jit 
+            def loop_body(betas, sigsqd, tausqd, bstar_vector, key):
+                Lamb_tausqd = jnp.diag(Lamb) + (1 / tausqd) * jnp.identity(mmtx + 1)
+                Lamb_tausqd_inv = jnp.diag(1 / jnp.diag(Lamb_tausqd))
 
-                Lamb_tausqd = np.diag(Lamb) + (1 / tausqd) * np.identity(mmtx + 1)
-                Lamb_tausqd_inv = np.diag(1 / np.diag(Lamb_tausqd))
+                mun = jnp.dot(jnp.dot(jnp.dot(Q, Lamb_tausqd_inv), jnp.transpose(Q)), Xty)
+                S = jnp.dot(Q, (jnp.diag((jnp.diag(Lamb_tausqd_inv) ** (1/2)))))
 
-                mun = Q.dot(Lamb_tausqd_inv).dot(np.transpose(Q)).dot(Xty)
-                S = Q.dot(np.diag(np.diag(Lamb_tausqd_inv) ** (1 / 2)))
+                vec = random.normal(random.PRNGKey(0), shape = (mmtx + 1, 1))
+                betas_k = jnp.transpose(mun + sigsqd ** (1 / 2) * (jnp.dot(S, vec))) # betas[k][:] = jnp.transpose(mun + sigsqd ** (1 / 2) * (S).dot(vec))
+                betas_k = jnp.squeeze(betas_k)
+                betas = betas.at[k].set(betas_k)
 
-                vec = np.random.normal(loc=0, scale=1, size=(mmtx + 1, 1))  # drawing from normal distribution
-                betas[k][:] = np.transpose(mun + sigsqd ** (1 / 2) * (S).dot(vec))
+                vecc = mun - jnp.reshape(betas[k][:], (len(betas[k][:]), 1))
 
-                vecc = mun - np.reshape(betas[k][:], (len(betas[k][:]), 1))
+                bstar = b + 0.5 * (betas[k][:].dot(XtX.dot(np.transpose(betas[k][:]))) - 2 * betas[k][:].dot(Xty) +
+                                   dtd + betas[k][:].dot(np.transpose(betas[k][:])) / tausqd)  
+                bstar = jnp.squeeze(bstar)
+                bstar_vector = bstar_vector.at[k, :].set(bstar)
 
-                bstar = b + 0.5 * (betas[k][:].dot(XtX.dot(np.transpose([betas[k][:]]))) - 2 * betas[k][:].dot(Xty) +
-                                   dtd + betas[k][:].dot(np.transpose([betas[k][:]])) / tausqd)
-                # bstar = b + comp1.dot(comp2) + 0.5 * dtd - comp3;
+                key = random.PRNGKey(0)
+                def handle_negative_bstar(_): 
+                    return jnp.full((1, 1), jnp.nan, dtype=jnp.float32)  # Returns a (1,1) array with NaN
+                
+                def handle_non_negative_bstar(_):
+                    return 1 / random.gamma(key, astar, 1 / bstar_vector)
+                
+                bstar_scalar = jnp.squeeze(bstar)
+                sigsqd = lax.cond(bstar_scalar < 0, handle_negative_bstar, handle_non_negative_bstar, operand = None)
 
-                # Returning a 'not a number' constant if bstar is negative, which would
-                # cause np.random.gamma to return a ValueError
-                if bstar < 0:
-                    sigsqd = math.nan
-                else:
-                    sigsqd = 1 / np.random.gamma(astar, 1 / bstar)
+                # if bstar < 0:
+                #     sigsqd = math.nan
+                # else:
+                #     sigsqd = 1 / np.random.gamma(astar, 1 / bstar)
+                
+                sigsqd = jnp.squeeze(sigsqd)
+                sigs = sigs.at[k].set(sigsqd)
 
-                sigs[k] = sigsqd
+                # btau_star = (1/(2*sigsqd)) * (betas[k][:].dot(jnp.reshape(betas[k][:], (len(betas[k][:]), 1)))) + btau
+                btau_star = (1/(2*sigsqd)) * (jnp.dot(betas[k][:],jnp.reshape(betas[k][:], (len(betas[k][:]), 1)))) + btau
+                tausqd = 1 / random.gamma(random.PRNGKey(2), atau_star, 1 / btau_star)
+                # tausqd = 1 / np.random.gamma(atau_star, 1 / btau_star)
+                tausqd = jnp.squeeze(tausqd)
+                taus = taus.at[k].set(tausqd)
 
-                btau_star = (1/(2*sigsqd)) * (betas[k][:].dot(np.reshape(betas[k][:], (len(betas[k][:]), 1)))) + btau
+                return (betas, sigs, taus)
+            
+            # init_carry = (betas_init, sigs_init, tausqd_init)
+            key = random.PRNGKey(0)
+            betas_init, sigs_init, tausqd_init = loop_body(betas, sigsqd, tausqd,bstar_vector, key)
+            init_carry = (betas_init, sigs_init, tausqd_init, key)
+            final_carry = lax.scan(loop_body, init_carry, None, length = draws)
 
-                tausqd = 1 / np.random.gamma(atau_star, 1 / btau_star)
-                taus[k] = tausqd
+            betas, sigs, taus = final_carry
 
             # Calculate the evidence
-            siglik = np.var(data - np.matmul(X, betahat))
+            siglik = jnp.var(data - jnp.matmul(X, betahat))
 
-            lik = -(n / 2) * np.log(siglik) - (n - 1) / 2
-            ev = (mmtx + 1) * np.log(n) - 2 * np.max(lik)
+            lik = -(n / 2) * jnp.log(siglik) - (n - 1) / 2
+            ev = (mmtx + 1) * jnp.log(n) - 2 * jnp.max(lik)
 
             X = X[:, 0:mmtx + 1]
 
