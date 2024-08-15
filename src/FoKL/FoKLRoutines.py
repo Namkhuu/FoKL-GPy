@@ -1473,7 +1473,9 @@ class FoKL:
             lik = jnp.zeros((draws, 1))
 
             @jit 
-            def loop_body(betas, sigs, sigsqd, taus, tausqd, key):
+            def loop_body(k, carry):
+                betas, sigs, sigsqd, taus, tausqd, key = carry
+
                 Lamb_tausqd = jnp.diag(Lamb) + (1 / tausqd) * jnp.identity(mmtx + 1)
                 Lamb_tausqd_inv = jnp.diag(1 / jnp.diag(Lamb_tausqd))
 
@@ -1511,15 +1513,19 @@ class FoKL:
                 tausqd = jnp.squeeze(tausqd)
                 taus = taus.at[k].set(tausqd)
 
-                return (betas, sigs, sigsqd, taus, tausqd)
+                return betas, sigs, sigsqd, taus, tausqd, key
             
-            # init_carry = (betas_init, sigs_init, tausqd_init)
-            key = random.PRNGKey(3)
-            betas, sigs, sigsqd, taus, tausqd = loop_body(betas, sigs, sigsqd, taus, tausqd, key)
-            init_carry = (betas, sigs, sigsqd, taus, tausqd, key)
-            final_carry = lax.scan(loop_body, init_carry, None, length = draws)
+            jax.debug.print("Betas: {}", betas)
 
-            final_carry = betas, sigs, taus
+            key = random.PRNGKey(3)
+            init_carry = (betas, sigs, sigsqd, taus, tausqd, key)
+            def body_fn(i, carry):
+                return loop_body(i, carry)
+
+            final_carry = lax.fori_loop(0, draws, body_fn, init_carry)
+
+            # Unpack the final carry values
+            betas, sigs, sigsqd, taus, tausqd, _ = final_carry
 
             # Calculate the evidence
             siglik = jnp.var(data - jnp.matmul(X, betahat))
