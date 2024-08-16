@@ -1480,22 +1480,23 @@ class FoKL:
                 Lamb_tausqd_inv = jnp.diag(1 / jnp.diag(Lamb_tausqd))
 
                 mun = jnp.dot(jnp.dot(jnp.dot(Q, Lamb_tausqd_inv), jnp.transpose(Q)), Xty)
-                S = jnp.dot(Q, (jnp.diag((jnp.diag(Lamb_tausqd_inv) ** (1/2)))))
+                S = jnp.dot(Q, jnp.diag(jnp.sqrt(jnp.diag(Lamb_tausqd_inv))))
 
-                vec = random.normal(random.PRNGKey(0), shape = (mmtx + 1, 1))
+                key, subkey = random.split(key)
+                vec = random.normal(subkey, shape=(mmtx + 1, 1))
                 betas_k = jnp.transpose(mun + sigsqd ** (1 / 2) * (jnp.dot(S, vec))) # betas[k][:] = jnp.transpose(mun + sigsqd ** (1 / 2) * (S).dot(vec))
                 betas_k = jnp.squeeze(betas_k)
                 betas = betas.at[k].set(betas_k)
 
                 vecc = mun - jnp.reshape(betas[k][:], (len(betas[k][:]), 1))
 
-                bstar = b + 0.5 * (betas[k][:].dot(XtX.dot(np.transpose(betas[k][:]))) - 2 * betas[k][:].dot(Xty) +
-                                   dtd + betas[k][:].dot(np.transpose(betas[k][:])) / tausqd)  
+                bstar = b + 0.5 * (jnp.dot(betas[k], jnp.dot(XtX, jnp.transpose(betas[k]))) - 2 * jnp.dot(betas[k], Xty) +
+                                    dtd + jnp.dot(betas[k], jnp.transpose(betas[k])) / tausqd)  
                 bstar = jnp.squeeze(bstar)
 
                 key, subkey = random.split(key)
                 def handle_negative_bstar(_): 
-                    return jnp.nan
+                    return math.nan
                 
                 def handle_non_negative_bstar(_):
                     gamma_sample = random.gamma(subkey, astar)  # Sample from the gamma distribution with shape parameter `astar`
@@ -1507,7 +1508,7 @@ class FoKL:
                 sigs = sigs.at[k].set(sigsqd) # sigs[k] = sigsqd
 
                 key, subkey = random.split(key)
-                btau_star = (1/(2*sigsqd)) * (jnp.dot(betas[k][:],jnp.reshape(betas[k][:], (len(betas[k][:]), 1)))) + btau
+                btau_star = (1 / (2 * sigsqd)) * jnp.dot(betas[k], jnp.reshape(betas[k], (len(betas[k]), 1))) + btau
                 btau_star = jnp.squeeze(btau_star)
                 tausqd = 1 / random.gamma(subkey, atau_star) / btau_star
                 tausqd = jnp.squeeze(tausqd)
@@ -1515,17 +1516,14 @@ class FoKL:
 
                 return betas, sigs, sigsqd, taus, tausqd, key
             
-            jax.debug.print("Betas: {}", betas)
-
             key = random.PRNGKey(3)
             init_carry = (betas, sigs, sigsqd, taus, tausqd, key)
-            def body_fn(i, carry):
-                return loop_body(i, carry)
-
-            final_carry = lax.fori_loop(0, draws, body_fn, init_carry)
+            final_carry = lax.fori_loop(0, draws, loop_body, init_carry)
 
             # Unpack the final carry values
             betas, sigs, sigsqd, taus, tausqd, _ = final_carry
+
+            jax.debug.print("Betas: {}", betas)
 
             # Calculate the evidence
             siglik = jnp.var(data - jnp.matmul(X, betahat))
