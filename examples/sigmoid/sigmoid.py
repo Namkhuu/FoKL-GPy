@@ -17,7 +17,7 @@ from src.FoKL import FoKLRoutines
 import numpy as np
 import time
 import timeit 
-
+import jax
 
 def main():
     # Known dataset:
@@ -48,9 +48,12 @@ def main():
 
 
 if __name__ == '__main__':
-    t0 = time.time()
-    main()
-    tf = time.time()
-    print(f"Run Time = {tf - t0}")
+    # t0 = time.time()
+    # main()
+    # tf = time.time()
+    # print(f"Run Time = {tf - t0}")
+    timing = timeit.timeit("main()", globals=globals(), number=1)
+    print(jax.default_backend())
+    print(f"Execution Time: {timing} seconds")
     print("\nEnd of Sigmoid example.")
 

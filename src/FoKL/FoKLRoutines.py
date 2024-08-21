@@ -24,7 +24,6 @@ import jax
 import jax.numpy as jnp 
 import jax.lax as lax 
 from jax import grad, jit, random
-from functools import partial
 
 
 def load(filename, directory=None):
@@ -1510,7 +1509,7 @@ class FoKL:
                 key, subkey = random.split(key)
                 btau_star = (1 / (2 * sigsqd)) * jnp.dot(betas[k], jnp.reshape(betas[k], (len(betas[k]), 1))) + btau
                 btau_star = jnp.squeeze(btau_star)
-                tausqd = 1 / random.gamma(subkey, atau_star) / btau_star
+                tausqd = 1 / (random.gamma(subkey, atau_star) * (1/ btau_star))
                 tausqd = jnp.squeeze(tausqd)
                 taus = taus.at[k].set(tausqd)
 
@@ -1522,8 +1521,6 @@ class FoKL:
 
             # Unpack the final carry values
             betas, sigs, sigsqd, taus, tausqd, _ = final_carry
-
-            jax.debug.print("Betas: {}", betas)
 
             # Calculate the evidence
             siglik = jnp.var(data - jnp.matmul(X, betahat))
