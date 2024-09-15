@@ -1348,7 +1348,8 @@ class FoKL:
                           "Inf. This will likely cause values in 'betas' to be Nan.", category=UserWarning)
 
         # [END] initialization of constants
-
+        # jax.profiler.start_trace("src")
+        @jit
         def gibbs(inputs, data, phis, Xin, discmtx, a, b, atau, btau, draws, phind, xsm, sigsqd, tausqd, dtd):
             """
             'inputs' is the set of normalized inputs -- both parameters and model
@@ -1381,25 +1382,53 @@ class FoKL:
                 - dtd
             """
             # building the matrix by calculating the corresponding basis function outputs for each set of inputs
-            minp, ninp = np.shape(inputs)
+            minp, ninp = jnp.shape(inputs)
             phi_vec = []
-            if np.shape(discmtx) == ():  # part of fix for single input model
+            # if np.shape(discmtx) == ():  # part of fix for single input model
+            #     mmtx = 1
+            # else:
+            #     mmtx, null = np.shape(discmtx)
+
+            if jnp.isscalar(discmtx):
                 mmtx = 1
             else:
-                mmtx, null = np.shape(discmtx)
+                mmtx, _ = jnp.shape(discmtx)
 
-            if np.size(Xin) == 0:
-                Xin = np.ones((minp, 1))
-                mxin, nxin = np.shape(Xin)
-            else:
-                # X = Xin
-                mxin, nxin = np.shape(Xin)
-            if mmtx - nxin < 0:
+            # if np.size(Xin) == 0:
+            #     Xin = np.ones((minp, 1))
+            #     mxin, nxin = np.shape(Xin)
+            # else:
+            #     # X = Xin
+            #     mxin, nxin = np.shape(Xin)
+
+            if jnp.size(Xin) == 0:
+                Xin = jnp.ones((minp, 1))
+                mxin, nxin = jnp.shape(Xin)
+            else: 
+                mxin, nxin = jnp.shape(Xin)
+
+            if mmtx < nxin:
                 X = Xin
             else:
-                X = np.append(Xin, np.zeros((minp, mmtx - nxin)), axis=1)
+                X = jnp.concatenate([Xin, jnp.zeros((minp, mmtx - nxin))], axis=1)
 
-            for i in range(minp):  # for datapoint in training datapoints
+            # def handle_diff(mmtx, nxin):
+            #     return mmtx - nxin
+            
+            # diff = mmtx - nxin
+
+            # diff_value = lax.cond(diff >= 0, lambda: diff, lambda: 0)
+
+            # def handle_mmtx_nxin(Xin):
+            #     return Xin
+
+            # def handle_mmtx_nxin_else(Xin, minp, diff_value):
+            #     zeroes = jnp.zeros((minp, diff_value)) 
+            #     return jnp.concatenate([Xin, zeroes], axis = 1)
+            
+            # X = lax.cond(diff < 0, lambda _: handle_mmtx_nxin(Xin), lambda _: handle_mmtx_nxin_else(Xin, minp, diff_value), operand = None)
+
+            # for i in range(minp):  # for datapoint in training datapoints
 
                 # ------------------------------
                 # [IN DEVELOPMENT] PRINT PERCENT COMPLETION TO CONSOLE (reported to cause significant delay):
@@ -1414,31 +1443,72 @@ class FoKL:
                 # [END]
                 # ----------------------------
                 
-                for j in range(nxin, mmtx + 1):
-                    null, nxin2 = np.shape(X)
-                    if j == nxin2:
-                        X = np.append(X, np.zeros((minp, 1)), axis=1)
+                # for j in range(nxin, mmtx + 1):
+                #     null, nxin2 = np.shape(X)
+                #     if j == nxin2:
+                #         X = np.append(X, np.zeros((minp, 1)), axis=1)
+
+                #     phi = 1
+
+                #     for k in range(ninp):  # for input var in input vars
+
+                #         if np.shape(discmtx) == ():
+                #             num = discmtx
+                #         else:
+                #             num = discmtx[j - 1][k]
+
+                #         if num != 0:  # enter if loop if num is nonzero
+                #             nid = int(num - 1)
+
+                #             # Evaluate basis function:
+                #             if self.kernel == self.kernels[0]:  # == 'Cubic Splines':
+                #                 coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]  # coefficients for cubic
+                #             elif self.kernel == self.kernels[1]:  # == 'Bernoulli Polynomials':
+                #                 coeffs = phis[nid]  # coefficients for bernoulli
+                #             phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
+
+                #     X[i][j] = phi
+            
+            def update_X(i, X): 
+                for j in range(nxin, mmtx + 1): 
+                    null, nxin2 = jnp.shape(X)
+                    if j == nxin2: 
+                        X = jnp.concatenate([X, jnp.zeros((minp, 1))], axis= 1)
 
                     phi = 1
 
-                    for k in range(ninp):  # for input var in input vars
-
-                        if np.shape(discmtx) == ():
+                    for k in range(ninp): 
+                        if jnp.isscalar(discmtx): 
                             num = discmtx
-                        else:
-                            num = discmtx[j - 1][k]
+                        else: 
+                            num = discmtx[j-1, k]
 
-                        if num != 0:  # enter if loop if num is nonzero
-                            nid = int(num - 1)
+                        num_scalar = jnp.squeeze(num)
 
-                            # Evaluate basis function:
-                            if self.kernel == self.kernels[0]:  # == 'Cubic Splines':
-                                coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]  # coefficients for cubic
+                        def handle_num_non_zero(_):
+                            nid = jnp.astype(num_scalar - 1, int) 
+                            # if self.kernel == self.kernels[0]:  # == 'Cubic Splines':
+                            #     coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]  # coefficients for cubic
+                            
+                            if self.kernel == self.kernel[0]:
+                                coeffs = lax.scan(lambda order, _: (phis[nid][order][phind[i, k]], None), None, jnp.arange(4))[0]
                             elif self.kernel == self.kernels[1]:  # == 'Bernoulli Polynomials':
                                 coeffs = phis[nid]  # coefficients for bernoulli
-                            phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
 
-                    X[i][j] = phi
+                            # coeffs = lax.cond(self.kernel == self.kernels[0], lambda _: lax.scan(lambda order, _: (phis[nid][order][phind[i, k]], None), None, jnp.arange(4))[0], lambda _: phis[nid]) # 'Cubic Splines'                 
+                            
+                            return phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
+
+                        def handle_num_zero(_): 
+                            return 1
+                        
+                        phi = lax.cond(num_scalar != 0, handle_num_non_zero, handle_num_zero, operand=None) * phi
+
+                    X = X.at[i, j].set[phi]  
+                return X
+
+
+            X = lax.fori_loop(0, minp, update_X, X)
 
             # # initialize tausqd at the mode of its prior: the inverse of the mode of sigma squared, such that the
             # # initial variance for the betas is 1
@@ -1471,7 +1541,7 @@ class FoKL:
             taus = jnp.zeros((draws, 1))
             lik = jnp.zeros((draws, 1))
 
-            @jit 
+            @jit
             def loop_body(k, carry):
                 betas, sigs, sigsqd, taus, tausqd, key = carry
 
@@ -1523,7 +1593,7 @@ class FoKL:
             betas, sigs, sigsqd, taus, tausqd, _ = final_carry
 
             # Calculate the evidence
-            siglik = jnp.var(data - jnp.matmul(X, betahat))
+            siglik = jnp.var(data - np.matmul(X, betahat))
 
             lik = -(n / 2) * jnp.log(siglik) - (n - 1) / 2
             ev = (mmtx + 1) * jnp.log(n) - 2 * jnp.max(lik)
@@ -1531,7 +1601,7 @@ class FoKL:
             X = X[:, 0:mmtx + 1]
 
             return betas, sigs, taus, betahat, X, ev
-
+        # jax.profiler.stop_trace()
         # 'n' is the number of datapoints whereas 'm' is the number of inputs
         n, m = np.shape(inputs)
         mrel = n

@@ -8,14 +8,15 @@ from FoKL.GP_Integrate import GP_Integrate
 import os
 dir = os.path.abspath(os.path.dirname(__file__))  # directory of script
 # # -----------------------------------------------------------------------
-# # UNCOMMENT IF USING LOCAL FOKL PACKAGE:
+# UNCOMMENT IF USING LOCAL FOKL PACKAGE:
 # import sys
 # sys.path.append(os.path.join(dir, '..', '..'))  # package directory
 # from src.FoKL import FoKLRoutines
 # from src.FoKL.GP_Integrate import GP_Integrate
-# # -----------------------------------------------------------------------
+# -----------------------------------------------------------------------
 import numpy as np
 import matplotlib.pyplot as plt
+import timeit
 
 
 def main():
@@ -36,6 +37,7 @@ def main():
     betas = []
     betas_avg = []
     mtx = []
+    rmse = []
     for i in range(2):
         print(f"\nCurrently training model on dataset {int(i + 1)}...\n")
 
@@ -43,7 +45,13 @@ def main():
         model.btau = btau[i]
 
         # Running emulator routine for current dataset:
+        t1 = timeit.default_timer()
         betas_i, mtx_i, _ = model.fit(traininputs, traindata[i], clean=True)
+        t2 = timeit.default_timer()
+        _, _, rmsei = model.coverage3(inputs = traininputs, data = traindata[i])
+        rmse.append(rmsei)
+        print(t2 - t1)
+        print(f'RMSE = {rmse}')
         print("\nDone!")
 
         # Store coefficients and interaction matrix of model equation for post-processing (i.e., for 'GP_Integrate'):
