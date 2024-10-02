@@ -15,7 +15,7 @@ import itertools
 import math
 import numpy as np
 from numpy import linalg as LA
-from scipy.linalg import eigh
+# from scipy.linalg import eigh
 import matplotlib.pyplot as plt
 import time
 import pickle
@@ -24,6 +24,8 @@ import jax
 import jax.numpy as jnp 
 import jax.lax as lax 
 from jax import grad, jit, random
+from jax.numpy.linalg import eigh, norm
+from functools import partial
 
 
 def load(filename, directory=None):
@@ -1349,7 +1351,7 @@ class FoKL:
 
         # [END] initialization of constants
         # jax.profiler.start_trace("src")
-        @jit
+        @partial(jit, static_argnames=("draws"))
         def gibbs(inputs, data, phis, Xin, discmtx, a, b, atau, btau, draws, phind, xsm, sigsqd, tausqd, dtd):
             """
             'inputs' is the set of normalized inputs -- both parameters and model
@@ -1384,131 +1386,155 @@ class FoKL:
             # building the matrix by calculating the corresponding basis function outputs for each set of inputs
             minp, ninp = jnp.shape(inputs)
             phi_vec = []
-            # if np.shape(discmtx) == ():  # part of fix for single input model
-            #     mmtx = 1
-            # else:
-            #     mmtx, null = np.shape(discmtx)
 
-            if jnp.isscalar(discmtx):
+            if jnp.shape(discmtx) == ():
                 mmtx = 1
             else:
-                mmtx, _ = jnp.shape(discmtx)
+                mmtx, null = jnp.shape(discmtx)
 
-            # if np.size(Xin) == 0:
-            #     Xin = np.ones((minp, 1))
-            #     mxin, nxin = np.shape(Xin)
-            # else:
-            #     # X = Xin
-            #     mxin, nxin = np.shape(Xin)
+            # if jnp.size(Xin) == 0:
+            #     Xin = jnp.ones((minp, 1))
+            #     mxin, nxin = jnp.shape(Xin)
+            # else: 
+            #     mxin, nxin = jnp.shape(Xin)
 
-            if jnp.size(Xin) == 0:
-                Xin = jnp.ones((minp, 1))
-                mxin, nxin = jnp.shape(Xin)
-            else: 
-                mxin, nxin = jnp.shape(Xin)
-
-            if mmtx < nxin:
+            Xin = jnp.ones((minp, 1))
+            mxin, nxin = jnp.shape(Xin)
+            
+            if mmtx - nxin < 0:
                 X = Xin
             else:
                 X = jnp.concatenate([Xin, jnp.zeros((minp, mmtx - nxin))], axis=1)
 
-            # def handle_diff(mmtx, nxin):
-            #     return mmtx - nxin
-            
-            # diff = mmtx - nxin
-
-            # diff_value = lax.cond(diff >= 0, lambda: diff, lambda: 0)
-
-            # def handle_mmtx_nxin(Xin):
-            #     return Xin
-
-            # def handle_mmtx_nxin_else(Xin, minp, diff_value):
-            #     zeroes = jnp.zeros((minp, diff_value)) 
-            #     return jnp.concatenate([Xin, zeroes], axis = 1)
-            
-            # X = lax.cond(diff < 0, lambda _: handle_mmtx_nxin(Xin), lambda _: handle_mmtx_nxin_else(Xin, minp, diff_value), operand = None)
 
             # for i in range(minp):  # for datapoint in training datapoints
 
-                # ------------------------------
-                # [IN DEVELOPMENT] PRINT PERCENT COMPLETION TO CONSOLE (reported to cause significant delay):
-                #
-                # if self.ConsoleOutput and data.dtype != np.float64:  # if large dataset, show progress for sanity check
-                #     percent = i / (minp - 1)
-                #     sys.stdout.write(f"Gibbs: {round(100 * percent, 2):.2f}%")  # show percent of data looped through
-                #     sys.stdout.write('\r')  # set cursor at beginning of console output line (such that next iteration
-                #         # of Gibbs progress (or [ind, ev] if at end) overwrites current Gibbs progress)
-                #     sys.stdout.flush()
-                #
-                # [END]
-                # ----------------------------
+            #     ------------------------------
+            #     [IN DEVELOPMENT] PRINT PERCENT COMPLETION TO CONSOLE (reported to cause significant delay):
                 
-                # for j in range(nxin, mmtx + 1):
-                #     null, nxin2 = np.shape(X)
-                #     if j == nxin2:
-                #         X = np.append(X, np.zeros((minp, 1)), axis=1)
+            #     if self.ConsoleOutput and data.dtype != np.float64:  # if large dataset, show progress for sanity check
+            #         percent = i / (minp - 1)
+            #         sys.stdout.write(f"Gibbs: {round(100 * percent, 2):.2f}%")  # show percent of data looped through
+            #         sys.stdout.write('\r')  # set cursor at beginning of console output line (such that next iteration
+            #             # of Gibbs progress (or [ind, ev] if at end) overwrites current Gibbs progress)
+            #         sys.stdout.flush()
+                
+            #     [END]
+            #     ----------------------------
+                
+            #     for j in range(nxin, mmtx + 1):
+            #         null, nxin2 = np.shape(X)
+            #         if j == nxin2:
+            #             X = np.append(X, np.zeros((minp, 1)), axis=1)
 
-                #     phi = 1
+            #         phi = 1
 
-                #     for k in range(ninp):  # for input var in input vars
+            #         for k in range(ninp):  # for input var in input vars
 
-                #         if np.shape(discmtx) == ():
-                #             num = discmtx
-                #         else:
-                #             num = discmtx[j - 1][k]
+            #             if np.shape(discmtx) == ():
+            #                 num = discmtx
+            #             else:
+            #                 num = discmtx[j - 1][k]
 
-                #         if num != 0:  # enter if loop if num is nonzero
-                #             nid = int(num - 1)
+            #             if num != 0:  # enter if loop if num is nonzero
+            #                 nid = int(num - 1)
 
-                #             # Evaluate basis function:
-                #             if self.kernel == self.kernels[0]:  # == 'Cubic Splines':
-                #                 coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]  # coefficients for cubic
-                #             elif self.kernel == self.kernels[1]:  # == 'Bernoulli Polynomials':
-                #                 coeffs = phis[nid]  # coefficients for bernoulli
-                #             phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
+            #                 # Evaluate basis function:
+            #                 if self.kernel == self.kernels[0]:  # == 'Cubic Splines':
+            #                     coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]  # coefficients for cubic
+            #                 elif self.kernel == self.kernels[1]:  # == 'Bernoulli Polynomials':
+            #                     coeffs = phis[nid]  # coefficients for bernoulli
+            #                 phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
 
-                #     X[i][j] = phi
+            #         X[i][j] = phi
             
-            def update_X(i, X): 
-                for j in range(nxin, mmtx + 1): 
-                    null, nxin2 = jnp.shape(X)
-                    if j == nxin2: 
-                        X = jnp.concatenate([X, jnp.zeros((minp, 1))], axis= 1)
+            # def loop_body1(carry, i): 
+            #     X, = carry
+            #     for j in range(nxin, mmtx + 1): 
+            #         null, nxin2 = jnp.shape(X)
+            #         if j == nxin2:
+            #             X = jnp.concatenate([X, jnp.zeros((minp, 1))], axis=1)
 
-                    phi = 1
+            #         phi = 1
+                    
+            #         for k in range(ninp):
+            #             if jnp.isscalar(discmtx): 
+            #                 num = discmtx
+            #             else: 
+            #                 num = discmtx[j - 1][k]
 
-                    for k in range(ninp): 
-                        if jnp.isscalar(discmtx): 
-                            num = discmtx
-                        else: 
-                            num = discmtx[j-1, k]
+            #             # if jnp.not_equal(num, 0): 
+            #             #     nid = jnp.astype(num - 1, jnp.int32)
+            #             #     if self.kernel == self.kernels[0]: 
+            #             #         coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]
+            #             #     elif self.kernel == self.kernels[1]: 
+            #             #         coeffs = phis[nid]
+            #             #     phi *= self.evaluate_basis(coeffs, xsm[i, k])
 
-                        num_scalar = jnp.squeeze(num)
+            #             def num_non_zero(phi): 
+            #                 nid = jnp.astype(num -1, jnp.int32)
+            #                 def true_branch():
+            #                     if self.kernel == self.kernels[0]:
+            #                         # coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]
+            #                         def coeffs(order, carry): 
+            #                             phis_jax = jnp.array(phis)
+            #                             new_coeff = lax.dynamic_index_in_dim(phis_jax, nid, axis = 0)[order][phind[i, k]]
+            #                             carry = carry.at[order].set(new_coeff)
+            #                             return carry
+                                    
+            #                         initial_coeffs = jnp.zeros((4, 499))                         
+            #                         coeffs = lax.fori_loop(0, 4, coeffs, initial_coeffs)
 
-                        def handle_num_non_zero(_):
-                            nid = jnp.astype(num_scalar - 1, int) 
-                            # if self.kernel == self.kernels[0]:  # == 'Cubic Splines':
-                            #     coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]  # coefficients for cubic
+            #                     elif self.kernel == self.kernels[1]: 
+            #                         coeffs = phis[nid]
                             
-                            if self.kernel == self.kernel[0]:
-                                coeffs = lax.scan(lambda order, _: (phis[nid][order][phind[i, k]], None), None, jnp.arange(4))[0]
-                            elif self.kernel == self.kernels[1]:  # == 'Bernoulli Polynomials':
-                                coeffs = phis[nid]  # coefficients for bernoulli
+            #                     return phi * self.evaluate_basis(coeffs, xsm[i, k])
 
-                            # coeffs = lax.cond(self.kernel == self.kernels[0], lambda _: lax.scan(lambda order, _: (phis[nid][order][phind[i, k]], None), None, jnp.arange(4))[0], lambda _: phis[nid]) # 'Cubic Splines'                 
-                            
-                            return phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
+            #                 return lax.cond(num != 0, true_branch, lambda: None)
 
-                        def handle_num_zero(_): 
-                            return 1
-                        
-                        phi = lax.cond(num_scalar != 0, handle_num_non_zero, handle_num_zero, operand=None) * phi
+            #         X = X.at[i, j].set(num_non_zero(phi))
 
-                    X = X.at[i, j].set[phi]  
+            #         return (X,), None
+                
+            # init_carry = (X,)
+            # final_carry, _ = lax.scan(loop_body1, init_carry, jnp.arange(minp))
+            # X = final_carry[0] 
+
+            def body_fun_k(k, carry):
+                i, j, phi_j = carry
+                num = discmtx[j - 1, k] if discmtx.ndim > 1 else discmtx
+
+                def true_fun(_):
+                    nid = num - 1 
+                    term = (phis[nid, 0, phind[i, k]] +
+                        phis[nid, 1, phind[i, k]] * xsm[i, k] +
+                        phis[nid, 2, phind[i, k]] * xsm[i, k] ** 2 +
+                        phis[nid, 3, phind[i, k]] * xsm[i, k] ** 3)
+                    return phi_j * term
+            
+                def false_fun(_): 
+                    return phi_j
+                
+                phi_j = lax.cond(num != 0, true_fun, false_fun, None)
+
+                return (i, j, phi_j)
+            
+            def body_fun_j(j, carry): 
+                i, X = carry 
+                phi_j_initial = 1.0
+                carry_initial = (i, j, phi_j_initial)
+                carry = lax.fori_loop(0, ninp, body_fun_k, carry_initial)
+                _,_, phi_j = carry
+                X = X.at[i,j].set(phi_j)
+                return (i, X)
+            
+            def body_fun_i(i, X): 
+                carry_initial = (i, X)
+                _, X = lax.fori_loop(nxin, mmtx + 1, body_fun_j, carry_initial)
+
                 return X
-
-
-            X = lax.fori_loop(0, minp, update_X, X)
+            
+            X = lax.fori_loop(0, minp, body_fun_i, X)
 
             # # initialize tausqd at the mode of its prior: the inverse of the mode of sigma squared, such that the
             # # initial variance for the betas is 1
@@ -1528,23 +1554,22 @@ class FoKL:
             Lamb_inv = jnp.diag(1 / Lamb)
 
             betahat = Q.dot(Lamb_inv).dot(jnp.transpose(Q)).dot(Xty)
-            squerr = LA.norm(data - X.dot(betahat)) ** 2
+            squerr = norm(data - X.dot(betahat)) ** 2
 
             n = len(data)
             astar = a + 1 + n / 2 + (mmtx + 1) / 2
 
             atau_star = atau + mmtx / 2
-            # Gibbs iterations
 
+            # Gibbs iterations
             betas = jnp.zeros((draws, mmtx + 1))
             sigs = jnp.zeros((draws, 1))
             taus = jnp.zeros((draws, 1))
             lik = jnp.zeros((draws, 1))
 
-            @jit
-            def loop_body(k, carry):
+            # @jit
+            def loop_body2(k, carry):
                 betas, sigs, sigsqd, taus, tausqd, key = carry
-
                 Lamb_tausqd = jnp.diag(Lamb) + (1 / tausqd) * jnp.identity(mmtx + 1)
                 Lamb_tausqd_inv = jnp.diag(1 / jnp.diag(Lamb_tausqd))
 
@@ -1587,7 +1612,7 @@ class FoKL:
             
             key = random.PRNGKey(3)
             init_carry = (betas, sigs, sigsqd, taus, tausqd, key)
-            final_carry = lax.fori_loop(0, draws, loop_body, init_carry)
+            final_carry = lax.fori_loop(0, draws, loop_body2, init_carry)
 
             # Unpack the final carry values
             betas, sigs, sigsqd, taus, tausqd, _ = final_carry
