@@ -1499,17 +1499,26 @@ class FoKL:
             # init_carry = (X,)
             # final_carry, _ = lax.scan(loop_body1, init_carry, jnp.arange(minp))
             # X = final_carry[0] 
-
             def body_fun_k(k, carry):
                 i, j, phi_j = carry
                 num = discmtx[j - 1, k] if discmtx.ndim > 1 else discmtx
-
                 def true_fun(_):
-                    nid = num - 1 
-                    term = (phis[nid, 0, phind[i, k]] +
-                        phis[nid, 1, phind[i, k]] * xsm[i, k] +
-                        phis[nid, 2, phind[i, k]] * xsm[i, k] ** 2 +
-                        phis[nid, 3, phind[i, k]] * xsm[i, k] ** 3)
+                    nid = jnp.astype(num - 1, jnp.int(32))
+                    index_value = phind[i, k]
+                    # term = (jax.lax.dynamic_index_in_dim(phis[nid][0], index_value, axis=0) +
+                    #         jax.lax.dynamic_index_in_dim(phis[nid][1], index_value, axis=0) * xsm[i, k] +
+                    #         jax.lax.dynamic_index_in_dim(phis[nid][2], index_value, axis=0) * xsm[i, k] ** 2 +
+                    #         jax.lax.dynamic_index_in_dim(phis[nid][3], index_value, axis=0) * xsm[i, k] ** 3)
+                    # term = (phis[nid][0][index_value] +
+                    #     phis[nid][1][index_value] * xsm[i, k] +
+                    #     phis[nid][2][index_value] * xsm[i, k] ** 2 +
+                    #     phis[nid][3][index_value] * xsm[i, k] ** 3)
+
+                    term = (lax.dynamic_index_in_dim(phis[nid], index_value, 0)  +
+                            lax.dynamic_index_in_dim(phis[nid], index_value, 1) * xsm[i,k] + 
+                            lax.dynamic_index_in_dim(phis[nid], index_value, 2) * xsm[i,k] ** 2 + 
+                            lax.dynamic_index_in_dim(phis[nid], index_value, 3) * xsm[i,k] ** 3)
+
                     return phi_j * term
             
                 def false_fun(_): 
