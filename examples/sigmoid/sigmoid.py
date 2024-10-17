@@ -9,7 +9,7 @@ from FoKL import FoKLRoutines
 import os
 dir = os.path.abspath(os.path.dirname(__file__))  # directory of script
 # -----------------------------------------------------------------------
-# UNCOMMENT IF USING LOCAL FOKL PACKAGE:
+# # UNCOMMENT IF USING LOCAL FOKL PACKAGE:
 import sys
 sys.path.append(os.path.join(dir, '..', '..'))  # package directory
 from src.FoKL import FoKLRoutines
@@ -32,6 +32,7 @@ def main():
 
     # Initializing FoKL model with some user-defined hyperparameters (leaving others blank for default values) and
     # turning off user-warnings (i.e., warnings from FoKL) since working example requires no troubleshooting:
+    jax.devices()
     model = FoKLRoutines.FoKL(a=9, b=0.01, atau=3, btau=4000, aic=True, UserWarnings=False)
 
     # Running emulator routine (i.e., 'fit') to train model:
