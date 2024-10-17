@@ -1350,7 +1350,6 @@ class FoKL:
                           "Inf. This will likely cause values in 'betas' to be Nan.", category=UserWarning)
 
         # [END] initialization of constants
-        # jax.profiler.start_trace("src")
         @partial(jit, static_argnames=("draws"))
         def gibbs(inputs, data, phis, Xin, discmtx, a, b, atau, btau, draws, phind, xsm, sigsqd, tausqd, dtd):
             """
@@ -1367,7 +1366,7 @@ class FoKL:
             'discmtx' is the interaction matrix for the bss-anova function -- rows
             are terms in the function and columns are inputs (cols should line up
             with cols in 'inputs'
-
+`
             'a' and 'b' are the parameters of the ig distribution for the
             observation error variance of the data
 
@@ -1391,20 +1390,19 @@ class FoKL:
                 mmtx = 1
             else:
                 mmtx, null = jnp.shape(discmtx)
-
-            # if jnp.size(Xin) == 0:
-            #     Xin = jnp.ones((minp, 1))
-            #     mxin, nxin = jnp.shape(Xin)
-            # else: 
-            #     mxin, nxin = jnp.shape(Xin)
-
+            
+            # if jnp.size(Xin) == 0
             Xin = jnp.ones((minp, 1))
             mxin, nxin = jnp.shape(Xin)
             
             if mmtx - nxin < 0:
                 X = Xin
             else:
-                X = jnp.concatenate([Xin, jnp.zeros((minp, mmtx - nxin))], axis=1)
+                X = jnp.append(Xin, jnp.zeros((mxin, mmtx - nxin)), axis= 1)
+
+            null, nxin2 = jnp.shape(X)
+            additional_cols = max(0, mmtx + 1 - nxin2)
+            X = jnp.concatenate((X, jnp.zeros((minp, additional_cols))), axis= 1)
 
 
             # for i in range(minp):  # for datapoint in training datapoints
@@ -1447,78 +1445,17 @@ class FoKL:
             #                 phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
 
             #         X[i][j] = phi
-            
-            # def loop_body1(carry, i): 
-            #     X, = carry
-            #     for j in range(nxin, mmtx + 1): 
-            #         null, nxin2 = jnp.shape(X)
-            #         if j == nxin2:
-            #             X = jnp.concatenate([X, jnp.zeros((minp, 1))], axis=1)
 
-            #         phi = 1
-                    
-            #         for k in range(ninp):
-            #             if jnp.isscalar(discmtx): 
-            #                 num = discmtx
-            #             else: 
-            #                 num = discmtx[j - 1][k]
-
-            #             # if jnp.not_equal(num, 0): 
-            #             #     nid = jnp.astype(num - 1, jnp.int32)
-            #             #     if self.kernel == self.kernels[0]: 
-            #             #         coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]
-            #             #     elif self.kernel == self.kernels[1]: 
-            #             #         coeffs = phis[nid]
-            #             #     phi *= self.evaluate_basis(coeffs, xsm[i, k])
-
-            #             def num_non_zero(phi): 
-            #                 nid = jnp.astype(num -1, jnp.int32)
-            #                 def true_branch():
-            #                     if self.kernel == self.kernels[0]:
-            #                         # coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]
-            #                         def coeffs(order, carry): 
-            #                             phis_jax = jnp.array(phis)
-            #                             new_coeff = lax.dynamic_index_in_dim(phis_jax, nid, axis = 0)[order][phind[i, k]]
-            #                             carry = carry.at[order].set(new_coeff)
-            #                             return carry
-                                    
-            #                         initial_coeffs = jnp.zeros((4, 499))                         
-            #                         coeffs = lax.fori_loop(0, 4, coeffs, initial_coeffs)
-
-            #                     elif self.kernel == self.kernels[1]: 
-            #                         coeffs = phis[nid]
-                            
-            #                     return phi * self.evaluate_basis(coeffs, xsm[i, k])
-
-            #                 return lax.cond(num != 0, true_branch, lambda: None)
-
-            #         X = X.at[i, j].set(num_non_zero(phi))
-
-            #         return (X,), None
-                
-            # init_carry = (X,)
-            # final_carry, _ = lax.scan(loop_body1, init_carry, jnp.arange(minp))
-            # X = final_carry[0] 
             def body_fun_k(k, carry):
                 i, j, phi_j = carry
                 num = discmtx[j - 1, k] if discmtx.ndim > 1 else discmtx
                 def true_fun(_):
-                    nid = jnp.astype(num - 1, jnp.int(32))
+                    nid = lax.convert_element_type(num - 1, jnp.int32)
                     index_value = phind[i, k]
-                    # term = (jax.lax.dynamic_index_in_dim(phis[nid][0], index_value, axis=0) +
-                    #         jax.lax.dynamic_index_in_dim(phis[nid][1], index_value, axis=0) * xsm[i, k] +
-                    #         jax.lax.dynamic_index_in_dim(phis[nid][2], index_value, axis=0) * xsm[i, k] ** 2 +
-                    #         jax.lax.dynamic_index_in_dim(phis[nid][3], index_value, axis=0) * xsm[i, k] ** 3)
-                    # term = (phis[nid][0][index_value] +
-                    #     phis[nid][1][index_value] * xsm[i, k] +
-                    #     phis[nid][2][index_value] * xsm[i, k] ** 2 +
-                    #     phis[nid][3][index_value] * xsm[i, k] ** 3)
-
-                    term = (lax.dynamic_index_in_dim(phis[nid], index_value, 0)  +
-                            lax.dynamic_index_in_dim(phis[nid], index_value, 1) * xsm[i,k] + 
-                            lax.dynamic_index_in_dim(phis[nid], index_value, 2) * xsm[i,k] ** 2 + 
-                            lax.dynamic_index_in_dim(phis[nid], index_value, 3) * xsm[i,k] ** 3)
-
+                    term = (phis[nid][0][index_value] +
+                        phis[nid][1][index_value] * xsm[i, k] +
+                        phis[nid][2][index_value] * xsm[i, k] ** 2 +
+                        phis[nid][3][index_value] * xsm[i, k] ** 3)
                     return phi_j * term
             
                 def false_fun(_): 
@@ -1531,6 +1468,7 @@ class FoKL:
             def body_fun_j(j, carry): 
                 i, X = carry 
                 phi_j_initial = 1.0
+                # Carry includes 'j' to be accessible inside body_fun_k
                 carry_initial = (i, j, phi_j_initial)
                 carry = lax.fori_loop(0, ninp, body_fun_k, carry_initial)
                 _,_, phi_j = carry
@@ -1544,6 +1482,7 @@ class FoKL:
                 return X
             
             X = lax.fori_loop(0, minp, body_fun_i, X)
+            # X = jax.vmap(body_fun_i, in_axes=(0, None))(minp, X)
 
             # # initialize tausqd at the mode of its prior: the inverse of the mode of sigma squared, such that the
             # # initial variance for the betas is 1
@@ -1576,7 +1515,6 @@ class FoKL:
             taus = jnp.zeros((draws, 1))
             lik = jnp.zeros((draws, 1))
 
-            # @jit
             def loop_body2(k, carry):
                 betas, sigs, sigsqd, taus, tausqd, key = carry
                 Lamb_tausqd = jnp.diag(Lamb) + (1 / tausqd) * jnp.identity(mmtx + 1)
@@ -1635,7 +1573,7 @@ class FoKL:
             X = X[:, 0:mmtx + 1]
 
             return betas, sigs, taus, betahat, X, ev
-        # jax.profiler.stop_trace()
+        
         # 'n' is the number of datapoints whereas 'm' is the number of inputs
         n, m = np.shape(inputs)
         mrel = n
