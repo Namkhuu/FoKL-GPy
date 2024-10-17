@@ -25,6 +25,7 @@ import jax.numpy as jnp
 import jax.lax as lax 
 from jax import grad, jit, random
 from jax.numpy.linalg import eigh, norm
+from jax.tree_util import Partial
 from functools import partial
 
 
@@ -1445,18 +1446,25 @@ class FoKL:
             #                 phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
 
             #         X[i][j] = phi
-
+            def computed_with_term(phis, nid, index_value, xsm, phi_j):
+                term = (phis[nid][0][index_value] +
+                    phis[nid][1][index_value] * xsm[i, k] +
+                    phis[nid][2][index_value] * xsm[i, k] ** 2 +
+                     phis[nid][3][index_value] * xsm[i, k] ** 3)
+                return phi_j * term
+            
             def body_fun_k(k, carry):
                 i, j, phi_j = carry
                 num = discmtx[j - 1, k] if discmtx.ndim > 1 else discmtx
                 def true_fun(_):
-                    nid = lax.convert_element_type(num - 1, jnp.int32)
+                    nid = jnp.astype(num - 1, jnp.int32)
                     index_value = phind[i, k]
-                    term = (phis[nid][0][index_value] +
-                        phis[nid][1][index_value] * xsm[i, k] +
-                        phis[nid][2][index_value] * xsm[i, k] ** 2 +
-                        phis[nid][3][index_value] * xsm[i, k] ** 3)
-                    return phi_j * term
+                    # term = (phis[nid][0][index_value] +
+                    #     phis[nid][1][index_value] * xsm[i, k] +
+                    #     phis[nid][2][index_value] * xsm[i, k] ** 2 +
+                    #     phis[nid][3][index_value] * xsm[i, k] ** 3)
+                    computed_term = Partial(computed_with_term, nid)
+                    return computed_term(phis, index_value, xsm[i,k], phi_j)
             
                 def false_fun(_): 
                     return phi_j
