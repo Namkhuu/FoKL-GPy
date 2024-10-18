@@ -1447,6 +1447,7 @@ class FoKL:
 
             #         X[i][j] = phi
             def computed_with_term(phis, nid, index_value, xsm, phi_j):
+                jax.debug.print("phis shape: {}", jnp.shape(phis)) 
                 term = (phis[nid][0][index_value] +
                     phis[nid][1][index_value] * xsm[i, k] +
                     phis[nid][2][index_value] * xsm[i, k] ** 2 +
@@ -1456,7 +1457,7 @@ class FoKL:
             def body_fun_k(k, carry):
                 i, j, phi_j = carry
                 num = discmtx[j - 1, k] if discmtx.ndim > 1 else discmtx
-                def true_fun(_):
+                def true_fun(_):                    
                     nid = jnp.astype(num - 1, jnp.int32)
                     index_value = phind[i, k]
                     # term = (phis[nid][0][index_value] +
