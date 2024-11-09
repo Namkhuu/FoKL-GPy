@@ -9,7 +9,7 @@ from FoKL import FoKLRoutines
 import os
 dir = os.path.abspath(os.path.dirname(__file__))  # directory of script
 # -----------------------------------------------------------------------
-# # UNCOMMENT IF USING LOCAL FOKL PACKAGE:
+# UNCOMMENT IF USING LOCAL FOKL PACKAGE:
 import sys
 sys.path.append(os.path.join(dir, '..', '..'))  # package directory
 from src.FoKL import FoKLRoutines
@@ -37,9 +37,10 @@ def main():
 
     # Running emulator routine (i.e., 'fit') to train model:
     print("\nCurrently training model...\n")
-    # jax.profiler.start_trace("src", create_perfetto_link=True)
+    t1 = timeit.default_timer()
     a, b, ev = model.fit([x, y], z, clean=True)
-    # jax.profiler.stop_trace()
+    t2 = timeit.default_timer()
+    print(t2-t1)
 
     # Evaluating and visualizing predicted values of data as a function of all inputs (train set plus test set):
     print("\nDone! Please close the figure to continue.")
@@ -50,9 +51,6 @@ def main():
 
 
 if __name__ == '__main__':
-    t1 = timeit.default_timer()
     main()
-    t2 = timeit.default_timer()
-    print(t2-t1)
     print("\nEnd of Sigmoid example.")
 

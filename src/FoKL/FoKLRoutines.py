@@ -1446,26 +1446,34 @@ class FoKL:
             #                 phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
 
             #         X[i][j] = phi
-            def computed_with_term(phis, nid, index_value, xsm, phi_j):
-                jax.debug.print("phis shape: {}", jnp.shape(phis)) 
-                term = (phis[nid][0][index_value] +
-                    phis[nid][1][index_value] * xsm[i, k] +
-                    phis[nid][2][index_value] * xsm[i, k] ** 2 +
-                     phis[nid][3][index_value] * xsm[i, k] ** 3)
-                return phi_j * term
             
             def body_fun_k(k, carry):
                 i, j, phi_j = carry
                 num = discmtx[j - 1, k] if discmtx.ndim > 1 else discmtx
                 def true_fun(_):                    
-                    nid = jnp.astype(num - 1, jnp.int32)
+                    nid = jnp.int32(num - 1)
                     index_value = phind[i, k]
-                    # term = (phis[nid][0][index_value] +
-                    #     phis[nid][1][index_value] * xsm[i, k] +
-                    #     phis[nid][2][index_value] * xsm[i, k] ** 2 +
-                    #     phis[nid][3][index_value] * xsm[i, k] ** 3)
-                    computed_term = Partial(computed_with_term, nid)
-                    return computed_term(phis, index_value, xsm[i,k], phi_j)
+
+                    phis_nid = lax.switch(nid, [
+                        lambda: phis[0],
+                        lambda: phis[1],
+                        lambda: phis[2],
+                        lambda: phis[3],
+                    ])
+    
+                    # term_0 = lax.dynamic_index_in_dim(phis_nid[0], index_value, keepdims=False)
+                    # term_1 = lax.dynamic_index_in_dim(phis_nid[1], index_value, keepdims=False) * xsm[i, k]
+                    # term_2 = lax.dynamic_index_in_dim(phis_nid[2], index_value, keepdims=False) * xsm[i, k] ** 2
+                    # term_3 = lax.dynamic_index_in_dim(phis_nid[3], index_value, keepdims=False) * xsm[i, k] ** 3
+
+                    # term = term_0 + term_1 + term_2 + term_3
+
+                    term = (phis_nid[0][index_value] +
+                    phis_nid[1][index_value] * xsm[i, k] +
+                    phis_nid[2][index_value] * xsm[i, k] ** 2 +
+                    phis_nid[3][index_value] * xsm[i, k] ** 3)
+
+                    return phi_j * term
             
                 def false_fun(_): 
                     return phi_j
@@ -1574,7 +1582,7 @@ class FoKL:
             betas, sigs, sigsqd, taus, tausqd, _ = final_carry
 
             # Calculate the evidence
-            siglik = jnp.var(data - np.matmul(X, betahat))
+            siglik = jnp.var(data - jnp.matmul(X, betahat))
 
             lik = -(n / 2) * jnp.log(siglik) - (n - 1) / 2
             ev = (mmtx + 1) * jnp.log(n) - 2 * jnp.max(lik)
