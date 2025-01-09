@@ -8,13 +8,14 @@ perform some very basic post-processing with a 'coverage3' plot and included RMS
 from FoKL import FoKLRoutines
 import os
 dir = os.path.abspath(os.path.dirname(__file__))  # directory of script
-# # -----------------------------------------------------------------------
-# # UNCOMMENT IF USING LOCAL FOKL PACKAGE:
-# import sys
-# sys.path.append(os.path.join(dir, '..', '..'))  # package directory
-# from src.FoKL import FoKLRoutines
-# # -----------------------------------------------------------------------
+# -----------------------------------------------------------------------
+# UNCOMMENT IF USING LOCAL FOKL PACKAGE:
+import sys
+sys.path.append(os.path.join(dir, '..', '..'))  # package directory
+from src.FoKL import FoKLRoutines
+# -----------------------------------------------------------------------
 import numpy as np
+import time
 
 
 def main():
@@ -46,6 +47,8 @@ def main():
 
 
 if __name__ == '__main__':
+    t0 = time.time()
     main()
+    tf = time.time()
+    print(f"Run Time = {tf - t0}")
     print("\nEnd of Sigmoid example.")
-
