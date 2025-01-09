@@ -24,6 +24,8 @@ import jax
 import jax.numpy as jnp 
 import jax.lax as lax
 from jax import grad, jit
+from jax import random
+from jax.tree_util import Partial
 
 
 
@@ -1349,7 +1351,6 @@ class FoKL:
                           "Inf. This will likely cause values in 'betas' to be Nan.", category=UserWarning)
 
         # [END] initialization of constants
-        @jit
         def gibbs(inputs, data, phis, Xin, discmtx, a, b, atau, btau, draws, phind, xsm, sigsqd, tausqd, dtd):
             """
             'inputs' is the set of normalized inputs -- both parameters and model
@@ -1382,64 +1383,23 @@ class FoKL:
                 - dtd
             """
             # building the matrix by calculating the corresponding basis function outputs for each set of inputs
-            minp, ninp = jnp.shape(inputs)
+            minp, ninp = np.shape(inputs)
             phi_vec = []
-            # if jnp.shape(discmtx) == ():  # part of fix for single input model
-            #     mmtx = 1
-            # else:
-            #     mmtx, null = jnp.shape(discmtx)
+            if np.shape(discmtx) == ():  # part of fix for single input model
+                mmtx = 1
+            else:
+                mmtx, null = jnp.shape(discmtx)
 
-            def handle_discmtx_empty(_):
-                return 1, 0
-            
-            def handle_discmtx_non_empty(discmtx):
-                return jnp.shape(discmtx)
-            
-            mmtx, _ = lax.cond(jnp.shape(discmtx) == (), handle_discmtx_empty, handle_discmtx_non_empty, discmtx)
-
-            # if jnp.size(Xin) == 0:
-            #     Xin = jnp.ones((minp, 1))
-            #     mxin, nxin = jnp.shape(Xin)
-            # else:
-            #     # X = Xin
-            #     mxin, nxin = jnp.shape(Xin)
-
-
-
-            # def handle_Xin_empty(_): 
-            #     Xin = jnp.ones((minp,1))
-            #     return jnp.shape(Xin)
-            
-            # def handle_Xin_non_empty(Xin):
-            #     # Xin = Xin[:, jnp.newaxis]   # Meant to handle JAX automatically removal of the second dimension
-            #     return jnp.shape(Xin)
-            
-            # mxin, nxin = lax.cond(jnp.size(Xin) == 0, handle_Xin_empty, handle_Xin_non_empty, Xin)
-
-
-
-            if Xin == []:  #jnp.size(Xin) == 0:
-                Xin = jnp.ones((minp, 1))
-            
-            _, nxin = jnp.shape(Xin) #mxin, nxin 
-            
-            # if mmtx - nxin < 0:
-            #     X = Xin
-            # else:
-            #     X = jnp.append(Xin, jnp.zeros((minp, mmtx - nxin)), axis=1)
-
-            def handle_mmtx_nxin_condition(Xin):
-                return Xin
-    
-            def handle_mmtx_nxin_else(Xin):
-                mmtx_minus_nxin = mmtx - nxin
-                zeros_shape = (minp, mmtx_minus_nxin)
-                zeros_array = jnp.zeros(zeros_shape, dtype=Xin.dtype)
-                return jnp.append(Xin, zeros_array)
-            
-            # mmtx_minus_nxin = mmtx - nxin
-
-            X = lax.cond(mmtx - nxin < 0, handle_mmtx_nxin_condition,  handle_mmtx_nxin_else, Xin)
+            if np.size(Xin) == 0:
+                Xin = np.ones((minp, 1))
+                mxin, nxin = np.shape(Xin)
+            else:
+                # X = Xin
+                mxin, nxin = np.shape(Xin)            
+            if mmtx - nxin < 0:
+                X = Xin
+            else:
+                X = np.append(Xin, np.zeros((minp, mmtx - nxin)), axis=1)
 
             for i in range(minp):  # for datapoint in training datapoints
 
@@ -1457,15 +1417,15 @@ class FoKL:
                 # ----------------------------
                 
                 for j in range(nxin, mmtx + 1):
-                    null, nxin2 = jnp.shape(X)
+                    null, nxin2 = np.shape(X)
                     if j == nxin2:
-                        X = jnp.append(X, jnp.zeros((minp, 1)), axis=1)
+                        X = np.append(X, np.zeros((minp, 1)), axis=1)
 
                     phi = 1
 
                     for k in range(ninp):  # for input var in input vars
 
-                        if jnp.shape(discmtx) == ():
+                        if np.shape(discmtx) == ():
                             num = discmtx
                         else:
                             num = discmtx[j - 1][k]
@@ -1480,8 +1440,7 @@ class FoKL:
                                 coeffs = phis[nid]  # coefficients for bernoulli
                             phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
 
-                    # X[i][j] = phi
-                    X = X.at[i,j].set(phi)
+                    X[i][j] = phi
 
             # # initialize tausqd at the mode of its prior: the inverse of the mode of sigma squared, such that the
             # # initial variance for the betas is 1
@@ -1509,60 +1468,72 @@ class FoKL:
             atau_star = atau + mmtx / 2
 
             # Gibbs iterations
-
             betas = jnp.zeros((draws, mmtx + 1))
             sigs = jnp.zeros((draws, 1))
             taus = jnp.zeros((draws, 1))
             lik = jnp.zeros((draws, 1))
+            key = random.PRNGKey(3)
 
-            for k in range(draws):
-
+            def emulator(k, carry):
+                betas, sigs, sigsqd, taus, tausqd, key = carry
                 Lamb_tausqd = jnp.diag(Lamb) + (1 / tausqd) * jnp.identity(mmtx + 1)
                 Lamb_tausqd_inv = jnp.diag(1 / jnp.diag(Lamb_tausqd))
 
-                mun = Q.dot(Lamb_tausqd_inv).dot(jnp.transpose(Q)).dot(Xty)
-                S = Q.dot(jnp.diag(jnp.diag(Lamb_tausqd_inv) ** (1 / 2)))
+                mun = jnp.dot(jnp.dot(jnp.dot(Q, Lamb_tausqd_inv), jnp.transpose(Q)), Xty)
+                S = jnp.dot(Q, jnp.diag(jnp.sqrt(jnp.diag(Lamb_tausqd_inv))))
 
-                vec = np.random.normal(loc=0, scale=1, size=(mmtx + 1, 1))  # drawing from normal distribution
-                
-                # betas[k][:] = jnp.transpose(mun + sigsqd ** (1 / 2) * (S).dot(vec))
-                betas_k = jnp.transpose(mun + sigsqd ** (1 / 2) * (S).dot(vec))
+                key, subkey = random.split(key)
+                vec = random.normal(subkey, shape=(mmtx + 1, 1))
+                betas_k = jnp.transpose(mun + sigsqd ** (1 / 2) * (jnp.dot(S, vec))) # betas[k][:] = jnp.transpose(mun + sigsqd ** (1 / 2) * (S).dot(vec))
                 betas_k = jnp.squeeze(betas_k)
                 betas = betas.at[k].set(betas_k)
 
                 vecc = mun - jnp.reshape(betas[k][:], (len(betas[k][:]), 1))
 
-                bstar = b + 0.5 * (betas[k][:].dot(XtX.dot(jnp.transpose(betas[k][:]))) - 2 * betas[k][:].dot(Xty) +
-                                   dtd + betas[k][:].dot(jnp.transpose(betas[k][:])) / tausqd) # Bracket deleted for JAX in tranpose
-                # bstar = b + comp1.dot(comp2) + 0.5 * dtd - comp3;
+                bstar = b + 0.5 * (jnp.dot(betas[k], jnp.dot(XtX, jnp.transpose(betas[k]))) - 2 * jnp.dot(betas[k], Xty) +
+                                    dtd + jnp.dot(betas[k], jnp.transpose(betas[k])) / tausqd)  
+                bstar = jnp.squeeze(bstar)
 
-                # Returning a 'not a number' constant if bstar is negative, which would
-                # cause np.random.gamma to return a ValueError
-                if bstar < 0:
-                    sigsqd = math.nan
-                else:
-                    sigsqd = 1 / np.random.gamma(astar, 1 / bstar)
+                key, subkey = random.split(key)
+                def handle_negative_bstar(_): 
+                    return math.nan
+                
+                def handle_non_negative_bstar(_):
+                    gamma_sample = random.gamma(subkey, astar)  # Sample from the gamma distribution with shape parameter `astar`
+                    return 1 / (gamma_sample / bstar)  # Apply the scale by dividing the gamma sample by `bstar`
 
-                # sigs[k] = sigsqd
+                bstar_scalar = jnp.squeeze(bstar)
+                sigsqd = lax.cond(bstar_scalar < 0, handle_negative_bstar, handle_non_negative_bstar, operand = None)
                 sigsqd = jnp.squeeze(sigsqd)
-                sigs.at[k].set(sigsqd)
+                sigs = sigs.at[k].set(sigsqd) # sigs[k] = sigsqd
 
-                btau_star = (1/(2*sigsqd)) * (betas[k][:].dot(jnp.reshape(betas[k][:], (len(betas[k][:]), 1)))) + btau
-
-                tausqd = 1 / np.random.gamma(atau_star, 1 / btau_star)
-                # taus[k] = tausqd
+                key, subkey = random.split(key)
+                btau_star = (1 / (2 * sigsqd)) * jnp.dot(betas[k], jnp.reshape(betas[k], (len(betas[k]), 1))) + btau
+                btau_star = jnp.squeeze(btau_star)
+                tausqd = 1 / (random.gamma(subkey, atau_star) * (1/ btau_star))
                 tausqd = jnp.squeeze(tausqd)
-                taus.at[k].set(tausqd)
+                taus = taus.at[k].set(tausqd)
 
+                new_carry = carry.copy()
 
+                # return betas, sigs, sigsqd, taus, tausqd, key
+                return new_carry, _
+            
+            init_carry = (betas, sigs, sigsqd, taus, tausqd, key)
+            # final_carry = lax.fori_loop(0, draws, emulator, init_carry)
+            final_carry = lax.scan(emulator, init_carry, jnp.arange(draws))
+            # Unpack the final carry values
+            betas, sigs, sigsqd, taus, tausqd, _ = final_carry
+    
+    
             # Calculate the evidence
             siglik = jnp.var(data - jnp.matmul(X, betahat))
-
+    
             lik = -(n / 2) * jnp.log(siglik) - (n - 1) / 2
             ev = (mmtx + 1) * jnp.log(n) - 2 * jnp.max(lik)
-
+    
             X = X[:, 0:mmtx + 1]
-
+            
             return betas, sigs, taus, betahat, X, ev
 
         # 'n' is the number of datapoints whereas 'm' is the number of inputs
