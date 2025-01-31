@@ -9,10 +9,10 @@ from FoKL import FoKLRoutines
 import os
 dir = os.path.abspath(os.path.dirname(__file__))  # directory of script
 # # -----------------------------------------------------------------------
-# # UNCOMMENT IF USING LOCAL FOKL PACKAGE:
+# UNCOMMENT IF USING LOCAL FOKL PACKAGE:
 # import sys
 # sys.path.append(os.path.join(dir, '..', '..'))  # package directory
-# from src.FoKL import FoKLRoutines
+# from src.FoKL import FoKLRoutines_update
 # # -----------------------------------------------------------------------
 import numpy as np
 
