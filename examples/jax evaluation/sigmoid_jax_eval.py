@@ -12,19 +12,19 @@ import os
 dir = os.path.abspath(os.path.dirname(__file__))  # directory of script
 # # -----------------------------------------------------------------------
 # # UNCOMMENT IF USING LOCAL FOKL PACKAGE:
-# import sys
-# sys.path.append(os.path.join(dir, '..', '..'))  # package directory
-# from src.FoKL import FoKLRoutines
+import sys
+sys.path.append(os.path.join(dir, '..', '..'))  # package directory
+from src.FoKL import FoKLRoutines_update
 # # -----------------------------------------------------------------------
 import numpy as np
-from FoKL.JAX_Eval import *
+from src.FoKL.JAX_Eval import *
 import matplotlib.pyplot as plt
 
 
 def main():
     # Load Previously built FoKL Model
 
-    model = FoKLRoutines.load("sigmoid_model.fokl")
+    model = FoKLRoutines_update.load("examples\jax evaluation\sigmoid_model.fokl")
 
     n = [3, 5, 9, 50, 100, 500, 1000, 5000, 10000, 50000, 100000, 500000] # Number of evaluation points
 

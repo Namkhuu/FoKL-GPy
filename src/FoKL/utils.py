@@ -1,6 +1,8 @@
 import warnings
+import pickle
+import os
 
-def str_to_bool(s):
+def _str_to_bool(s):
     """Convert potential string (e.g., 'on'/'off') to boolean True/False. Intended to handle exceptions for keywords."""
     if isinstance(s, str):
         if s in ['yes', 'y', 'on', 'all', 'true', 'both']:
@@ -22,7 +24,7 @@ def str_to_bool(s):
     return s
 
 
-def process_kwargs(default, user):
+def _process_kwargs(default, user):
     """Update default values with user-defined keyword arguments (kwargs), or simply check all kwargs are expected."""
     if isinstance(default, dict):
         expected = default.keys()
@@ -44,7 +46,7 @@ def process_kwargs(default, user):
         raise ValueError("Input 'default' must be a dictionary or list.")
 
 
-def set_attributes(self, attrs):
+def _set_attributes(self, attrs):
     """Set items stored in Python dictionary 'attrs' as attributes of class."""
     if isinstance(attrs, dict):
         for key, value in attrs.items():
@@ -54,7 +56,7 @@ def set_attributes(self, attrs):
     return
 
 
-def merge_dicts(d1, d2):
+def _merge_dicts(d1, d2):
     """Merge two dictionaries into single dictionary in a backward-compatible way. Values of d2 replace any shared variables in d1."""
     d = d1.copy()
     d.update(d2)

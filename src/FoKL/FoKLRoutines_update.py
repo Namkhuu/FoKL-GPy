@@ -1,4 +1,6 @@
-from .utils import str_to_bool, process_kwargs
+import warnings
+import numpy as np
+from .utils import _str_to_bool, _process_kwargs, load
 from .config import FoKLConfig
 from .fokl_to_pyomo import fokl_to_pyomo
 from .preprocessing.kernels import getKernels
@@ -6,8 +8,6 @@ from .preprocessing.dataFormat import dataFormat
 from .sampler.samplers import fitSampler
 from .postprocessing.postprocessing import postprocess
 from .FoKL_Function.Functions import Functions
-import warnings
-import numpy as np
 
 
 class FoKL:
@@ -18,10 +18,10 @@ class FoKL:
         self.fitSampler = fitSampler(self, self.config, self.dataFormat, self.functions)
         self.postprocessing = postprocess(self, self.config, self.dataFormat, self.functions)
 
-        current = process_kwargs(self.config.DEFAULT, kwargs) # = default, but updated by any user kwargs
+        current = _process_kwargs(self.config.DEFAULT, kwargs) # = default, but updated by any user kwargs
         for boolean in ['gimmie', 'way3', 'aic', 'UserWarnings', 'ConsoleOutput']:
             if not (current[boolean] is False or current[boolean] is True): 
-                current[boolean] = str_to_bool(current[boolean])
+                current[boolean] = _str_to_bool(current[boolean])
 
         # Load spline coefficients:
         phis = current['phis']  # in case advanced user is testing other splines
@@ -49,9 +49,13 @@ class FoKL:
         return self.postprocessing.coverage3(**kwargs)
     
     def fit(self, inputs=None, data=None, **kwargs):
-        dataFormat.inputs = inputs 
         self.inputs, self.data, self.betas, self.minmax, self.mtx, evs = self.fitSampler.fit(inputs, data, **kwargs)
         return self.betas, self.mtx, self.minmax, evs
+    
+    def fitupdate(self, inputs=None, data=None, **kwargs):
+        self.inputs, self.data, self.betas, self.minmax, self.mtx, evs = self.fitSampler.fitupdate(inputs, data)
+        return self.betas, self.mtx, self.minmax, evs
+    
     
     # need to do more examination 
     def clear(self, keep=None, clear=None, all=False):

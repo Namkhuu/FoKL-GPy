@@ -1,8 +1,8 @@
-import numpy as np
 import warnings
-import pandas as pd
 import copy
-from ..utils import str_to_bool, process_kwargs, merge_dicts, set_attributes
+import numpy as np
+import pandas as pd
+from ..utils import _str_to_bool, _process_kwargs, _merge_dicts, _set_attributes
 class dataFormat:
     def __init__(self, fokl, config):
         self.fokl = fokl
@@ -17,8 +17,8 @@ class dataFormat:
            - formats data as 2D ndarray, with single column Note SingleInstance has priority over AutoTranspose. If SingleInstance=True, then AutoTranspose=False.
        """
        # Format and check inputs:
-       AutoTranspose = str_to_bool(AutoTranspose)
-       SingleInstance = str_to_bool(SingleInstance)
+       AutoTranspose = _str_to_bool(AutoTranspose)
+       SingleInstance = _str_to_bool(SingleInstance)
        bits = {16: np.float16, 32: np.float32, 64: np.float64}  # allowable datatypes: https://numpy.org/doc/stable/reference/arrays.scalars.html#arrays-scalars-built-in
        if SingleInstance is True:
            AutoTranspose = False
@@ -224,9 +224,9 @@ class dataFormat:
                    # For '_normalize':
                    'normalize': True, 'minmax': None, 'pillow': None, 'pillow_type': 'percent'}
         if kwargs_from_other is not None:  # then clean is being called from fit or evaluate function
-            kwargs = merge_dicts(kwargs, kwargs_from_other)  # merge dictionaries (kwargs={} is expected but just in case)
-        current = process_kwargs(default, kwargs)
-        current['normalize'] = str_to_bool(current['normalize'])
+            kwargs = _merge_dicts(kwargs, kwargs_from_other)  # merge dictionaries (kwargs={} is expected but just in case)
+        current = _process_kwargs(default, kwargs)
+        current['normalize'] = _str_to_bool(current['normalize'])
 
 
 
@@ -251,7 +251,7 @@ class dataFormat:
 
             # Define/update attributes with cleaned data and other relevant variables:
             attrs = {'inputs': inputs, 'data': data, 'trainlog': trainlog}
-            set_attributes(self, attrs)
+            _set_attributes(self, attrs)
 
         # Return formatted and possibly normalized dataset, depending on if user passed 'inputs' only or 'inputs' and 'data':
         if data is None:  # assume user only wants 'inputs' returned, e.g., 'clean_dataset = model.clean(dataset)'
@@ -293,7 +293,7 @@ class dataFormat:
         else:  # self.trainlog is vector indexing observations
             return self.inputs[self.trainlog, :], self.data[self.trainlog]
 
-    def inputs_to_phind(self, inputs, phis=None, kernel=None):
+    def _inputs_to_phind(self, inputs, phis=None, kernel=None):
         """
         Twice normalize the inputs to index the spline coefficients.
 

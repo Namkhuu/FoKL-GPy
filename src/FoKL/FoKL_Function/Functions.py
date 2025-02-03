@@ -1,9 +1,9 @@
-import numpy as np
-from ..utils import str_to_bool, process_kwargs, merge_dicts, set_attributes
 import warnings
 import time
 import os
 import pickle
+import numpy as np
+from ..utils import _str_to_bool, _process_kwargs
 
 class Functions:
     def __init__(self, fokl, config, dataFormat):
@@ -79,9 +79,9 @@ class Functions:
         default = {'inputs': None, 'kernel': self.kernel, 'd1': None, 'd2': None, 'draws': self.draws, 'betas': None,
                    'phis': None, 'mtx': self.mtx, 'minmax': self.minmax, 'IndividualDraws': False,
                    'ReturnFullArray': False, 'ReturnBasis': False}
-        current = process_kwargs(default, kwargs)
+        current = _process_kwargs(default, kwargs)
         for boolean in ['IndividualDraws', 'ReturnFullArray', 'ReturnBasis']:
-            current[boolean] = str_to_bool(current[boolean])
+            current[boolean] = _str_to_bool(current[boolean])
         # Load defaults:
         if current['inputs'] is None:
             current['inputs'] = self.inputs
@@ -138,7 +138,7 @@ class Functions:
                 di = np.zeros(M, dtype=bool)  # default is no second derivatives (i.e., gradient)
                 error_di = False
             elif isinstance(di, str):
-                if str_to_bool(di):
+                if _str_to_bool(di):
                     di = np.ones(M, dtype=bool)
                 else:
                     di = np.zeros(M, dtype=bool)
@@ -290,7 +290,7 @@ class Functions:
         """
 
         if all is not False:  # if not default
-            all = str_to_bool(all)  # convert to boolean if all='on', etc.
+            all = _str_to_bool(all)  # convert to boolean if all='on', etc.
         
         if all is False:
             attrs_to_keep = self.keep  # default
