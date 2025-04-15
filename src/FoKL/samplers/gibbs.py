@@ -2,11 +2,14 @@ import numpy as np
 import math
 from numpy import linalg as LA
 from scipy.linalg import eigh
-from .samplers import fitSampler
 
-class Sampler1(fitSampler):
-    def __init__(self, inputs, data, phis, Xin, discmtx, a, b, atau, btau, draws, phind, xsm, sigsqd, tausqd, dtd):
-        super().__init__(inputs, data, phis, Xin, discmtx, a, b, atau, btau, draws, phind, xsm, sigsqd, tausqd, dtd)
+
+class Sampler1:
+    def __init__(self, fokl, config, functions):
+        self.fokl = fokl
+        self.config = config
+        self.functions = functions
+
     def gibbs(self, inputs, data, phis, Xin, discmtx, a, b, atau, btau, draws, phind, xsm, sigsqd, tausqd, dtd):
         """
         'inputs' is the set of normalized inputs -- both parameters and model
@@ -74,11 +77,11 @@ class Sampler1(fitSampler):
                     if num != 0:  # enter if loop if num is nonzero
                         nid = int(num - 1)
                         # Evaluate basis function:
-                        if self.kernel == self.kernels[0]:  # == 'Cubic Splines':
+                        if self.config.KERNELS[0] == self.config.DEFAULT['kernel']:  # == 'Cubic Splines':
                             coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]  # coefficients for cubic
-                        elif self.kernel == self.kernels[1]:  # == 'Bernoulli Polynomials':
+                        elif self.config.KERNELS[1] == self.config.DEFAULT['kernel']:  # == 'Bernoulli Polynomials':
                             coeffs = phis[nid]  # coefficients for bernoulli
-                        phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
+                        phi = phi * self.functions.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
                 X[i][j] = phi
         # # initialize tausqd at the mode of its prior: the inverse of the mode of sigma squared, such that the
         # # initial variance for the betas is 1
@@ -128,4 +131,5 @@ class Sampler1(fitSampler):
         lik = -(n / 2) * np.log(siglik) - (n - 1) / 2
         ev = (mmtx + 1) * np.log(n) - 2 * np.max(lik)
         X = X[:, 0:mmtx + 1]
+        
         return betas, sigs, taus, betahat, X, ev

@@ -5,9 +5,10 @@ from .config import FoKLConfig
 from .fokl_to_pyomo import fokl_to_pyomo
 from .preprocessing.kernels import getKernels
 from .preprocessing.dataFormat import dataFormat
-from .sampler.samplers import fitSampler
+from .samplers.fit import fitSampler
 from .postprocessing.postprocessing import postprocess
 from .FoKL_Function.Functions import Functions
+
 
 
 class FoKL:
@@ -46,18 +47,68 @@ class FoKL:
             setattr(self, key, value)
                 
     def coverage3(self, **kwargs): 
+        """
+        For validation testing of FoKL model. Default functionality is to evaluate all inputs (i.e., train+test sets).
+        Returned is the predicted output 'mean', confidence bounds 'bounds', and root mean square error 'rmse'. A plot
+        may be returned by calling 'coverage3(plot=1)'; or, for a potentially more meaningful plot in terms of judging
+        accuracy, 'coverage3(plot='sorted')' plots the data in increasing value.
+        Optional inputs for numerical evaluation of model:
+            inputs == normalized and properly formatted inputs to evaluate              == self.inputs (default)
+            data   == properly formatted data outputs to use for validating predictions == self.data (default)
+            draws  == number of beta terms used                                         == self.draws (default)
+        Optional inputs for basic plot controls:
+            plot              == binary for generating plot, or 'sorted' for plot of ordered data == False (default)
+            bounds            == binary for plotting bounds                                       == True (default)
+            xaxis             == integer indexing the input variable to plot along the x-axis     == indices (default)
+            labels            == binary for adding labels to plot                                 == True (default)
+            xlabel            == string for x-axis label                                          == 'Index' (default)
+            ylabel            == string for y-axis label                                          == 'Data' (default)
+            title             == string for plot title                                            == 'FoKL' (default)
+            legend            == binary for adding legend to plot                                 == True (default)
+            LegendLabelFoKL   == string for FoKL's label in legend                                == 'FoKL' (default)
+            LegendLabelData   == string for Data's label in legend                                == 'Data' (default)
+            LegendLabelBounds == string for Bounds's label in legend                              == 'Bounds' (default)
+        Optional inputs for detailed plot controls:
+            PlotTypeFoKL   == string for FoKL's color and line type  == 'b' (default)
+            PlotSizeFoKL   == scalar for FoKL's line size            == 2 (default)
+            PlotTypeBounds == string for Bounds' color and line type == 'k--' (default)
+            PlotSizeBounds == scalar for Bounds' line size           == 2 (default)
+            PlotTypeData   == string for Data's color and line type  == 'ro' (default)
+            PlotSizeData   == scalar for Data's line size            == 2 (default)
+        Return Outputs:
+            mean   == predicted output values for each indexed input
+            bounds == confidence interval for each predicted output value
+            rmse   == root mean squared deviation (RMSE) of prediction versus known data
+        """
         return self.postprocessing.coverage3(**kwargs)
     
     def fit(self, inputs=None, data=None, **kwargs):
+        """
+        For fitting model to known inputs and data (i.e., training of model).
+        Inputs:
+            inputs == NxM matrix of independent (or non-linearly dependent) 'x' variables for fitting f(x1, ..., xM)
+            data   == Nx1 vector of dependent variable to create model for predicting the value of f(x1, ..., xM)
+        Keyword Inputs (for fit):
+            clean         == boolean to perform automatic cleaning and formatting               == False (default)
+            ConsoleOutput == boolean to print [ind, ev] to console during FoKL model generation == True (default)
+        See 'clean' for additional keyword inputs, which may be entered here.
+        Return Outputs:
+            'betas' are a draw (after burn-in) from the posterior distribution of coefficients: matrix, with rows
+            corresponding to draws and columns corresponding to terms in the GP.
+            'mtx' is the basis function interaction matrix from the
+            best model: matrix, with rows corresponding to terms in the GP (and thus to the
+            columns of 'betas' and columns corresponding to inputs. a given entry in the
+            matrix gives the order of the basis function appearing in a given term in the GP.
+            all basis functions indicated on a given row are multiplied together.
+            a zero indicates no basis function from a given input is present in a given term
+            'ev' is a vector of BIC values from all of the models
+            evaluated
+        Added Attributes:
+            - Various ... please see description of 'clean()'
+        """
         self.inputs, self.data, self.betas, self.minmax, self.mtx, evs = self.fitSampler.fit(inputs, data, **kwargs)
         return self.betas, self.mtx, self.minmax, evs
     
-    def fitupdate(self, inputs=None, data=None, **kwargs):
-        self.inputs, self.data, self.betas, self.minmax, self.mtx, evs = self.fitSampler.fitupdate(inputs, data)
-        return self.betas, self.mtx, self.minmax, evs
-    
-    
-    # need to do more examination 
     def clear(self, keep=None, clear=None, all=False):
         """
         Delete all attributes from the FoKL class except for hyperparameters and settings by default, but user may
@@ -72,7 +123,7 @@ class FoKL:
         """
 
         if all is not False:  # if not default
-            all = str_to_bool(all)  # convert to boolean if all='on', etc.
+            all = _str_to_bool(all)  # convert to boolean if all='on', etc.
 
         if all is False:
             attrs_to_keep = self.config.KEEP  # default
@@ -97,3 +148,15 @@ class FoKL:
     
     def save(self, filename=None, **kwargs):
         return self.functions.save(filename, **kwargs)
+    
+    def load(self, filename=None, **kwargs):
+        """
+        Load a FoKL class from a file.
+    
+        By default, 'directory' is the current working directory that contains the script calling this method. An absolute
+        or relative directory may be defined if the model to load is located elsewhere.
+    
+        For simplicity, enter the returned output from 'self.save()' as the argument here, i.e., for 'filename'. Do this
+        while leaving 'directory' blank since 'filename' can simply include the directory itself.
+        """
+        return load(filename, **kwargs)

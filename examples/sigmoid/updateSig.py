@@ -3,10 +3,10 @@
 # For Data Processing
 import numpy as np
 import pandas as pd
-from FoKL import FoKLRoutines
+from FoKL import FoKLRoutines_update
 
 # Create FoKL Object
-model = FoKLRoutines.FoKL()
+model = FoKLRoutines_update.FoKL()
 
 # For Graphing
 import plotly.express as px

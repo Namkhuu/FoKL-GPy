@@ -1,11 +1,15 @@
 import numpy as np
+import math
+from numpy import linalg as LA
 from scipy.linalg import eigh
-from .samplers import fitSampler
 
-class Sampler2(fitSampler):
-    def __init__(self, sigsqd0, inputs, data, phis, Xin, discmtx, a, b, atau, btau, phind, xsm, 
-                                 mu_old, Sigma_old, draws):
-        super().__init__(sigsqd0, inputs, data, phis, Xin, discmtx, a, b, atau, btau, phind, xsm, mu_old, Sigma_old, draws)
+
+class Sampler2:
+    def __init__(self, fokl, config, functions):
+        self.fokl = fokl
+        self.config = config
+        self.functions = functions
+
         
     def gibbs_Xin_update(self, sigsqd0, inputs, data, phis, Xin, discmtx, a, b, atau, btau, phind, xsm,
                                  mu_old, Sigma_old, draws):
@@ -95,11 +99,11 @@ class Sampler2(fitSampler):
                         nid = int(num - 1)
 
                         # Evaluate basis function:
-                        if self.kernel == self.kernels[0]:  # == 'Cubic Splines':
+                        if self.config.KERNELS[0] == self.config.DEFAULT['kernel']:  # == 'Cubic Splines':
                             coeffs = [phis[nid][order][phind[i, k]] for order in range(4)]  # coefficients for cubic
-                        elif self.kernel == self.kernels[1]:  # == 'Bernoulli Polynomials':
+                        elif self.config.KERNELS[1] == self.config.DEFAULT['kernel']:  # == 'Bernoulli Polynomials':
                             coeffs = phis[nid]  # coefficients for bernoulli
-                        phi = phi * self.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
+                        phi = phi * self.functions.evaluate_basis(coeffs, xsm[i, k])  # multiplies phi(x0)*phi(x1)*etc.
 
                 X[i][j] = phi
 
@@ -176,7 +180,7 @@ class Sampler2(fitSampler):
                 comp2 = (XtX + (1 / tausqd) * np.identity(mmtx + 1)).dot(vecc)
                 comp3 = 0.5 * np.transpose(mun).dot(Xty)
 
-                bstar = b + comp1.dot(comp2) + 0.5 * dtd - comp3;
+                bstar = b + comp1.dot(comp2) + 0.5 * dtd - comp3
 
                 # Returning a 'not a number' constant if bstar is negative, which would
                 # cause np.random.gamma to return a ValueError

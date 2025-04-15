@@ -24,6 +24,8 @@ class FoKLConfig:
         # Store supported kernels for later logical checks against 'kernel':
         self.KERNELS = ['Cubic Splines', 'Bernoulli Polynomials']
 
+        self.samplers = ['gibbs', 'gibbs_update']
+
         # Store list of attributes to keep in event of clearing model (i.e., 'self.clear'):
         self.attrs = ['dataFormat', 'functions', 'fitSampler', 'postprocessing', 'inputs', 'data', 'betas', 'minmax', 'mtx', 'evs', 'config']
 

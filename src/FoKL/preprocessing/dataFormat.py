@@ -7,7 +7,6 @@ class dataFormat:
     def __init__(self, fokl, config):
         self.fokl = fokl
         self.config = config
-        # self.inputs = self.fokl
 
 
     def format(self, inputs, data=None, AutoTranspose=True, SingleInstance=False, bit=64):

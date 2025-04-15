@@ -85,5 +85,3 @@ def load(filename, directory=None):
     file.close()
 
     return model
-
-
