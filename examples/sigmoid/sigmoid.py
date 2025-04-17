@@ -36,7 +36,7 @@ def main():
 
     # Running emulator routine (i.e., 'fit') to train model:
     print("\nCurrently training model...\n")
-    a, b, minmax, ev = model.fit([x, y], z, sampler = 'gibbs_Xin_update', clean=True)
+    a, b, minmax, ev = model.fit([x, y], z,  clean=True)
 
     # Evaluating and visualizing predicted values of data as a function of all inputs (train set plus test set):
     print("\nDone! Please close the figure to continue.")
